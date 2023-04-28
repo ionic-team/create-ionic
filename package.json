@@ -1,6 +1,6 @@
 {
-    "name": "create-ionic",
-    "version": "1.0.0",
+    "name": "create-mh-ionic",
+    "version": "0.0.1",
     "license": "MIT",
     "bin": {
         "create-ionic-esm": "bin/index.mjs",

@@ -1,0 +1,11 @@
+# having this file excludes .gitignore entries
+
+src
+.prettierrc
+tsup.config.ts
+tsconfig.json
+.env
+.eslintrc.js
+*.ts
+!*.d.ts
+!**/files/**/*

@@ -5,27 +5,18 @@ import {
   cancel,
   select,
   group,
-  spinner,
   confirm,
   isCancel,
 } from '@clack/prompts';
 import minimist from 'minimist';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
-
-import { pipeline } from 'node:stream/promises';
 import fetch from 'node-fetch';
-import { resolve } from 'node:path';
 import tar from 'tar';
-import { spawn } from 'node:child_process';
 
-const s = spinner();
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { pipeline } from 'node:stream/promises';
+import { resolve } from 'node:path';
+
 const pwd = process.cwd();
 export const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
 
@@ -90,9 +81,7 @@ async function main() {
   if (prompt.shouldInstallDeps)
     await runShell('npm', ['install'], shellOptions);
 
-  // s.stop();
-
-  // // Init Git Last
+  // Init Git Last
   if (projectSchema.git) {
     await runShell('git', ['init'], shellOptions);
     await runShell('git', ['add', '-A'], shellOptions);
@@ -143,7 +132,7 @@ async function getTemplate() {
   return (
     templateArg ||
     (await select({
-      message: 'Pick a project type.',
+      message: 'Pick a starting template.',
       options: [
         {
           value: 'tabs',
@@ -215,7 +204,7 @@ async function runShell(
   arg1: string[],
   shellOptions: any
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolve) => {
     const cp = spawn(cmd, arg1, shellOptions);
     cp.on('close', () => {
       resolve();

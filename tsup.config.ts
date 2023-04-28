@@ -7,7 +7,7 @@ const opts: Options = {
     entryPoints: ['src/index.ts'],
     outDir: 'dist',
     target: 'node18',
-    format: ['esm'],
+    format: ['esm', 'cjs'],
     clean: true,
     dts: true,
     minify: true,
