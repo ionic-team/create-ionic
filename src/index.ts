@@ -23,7 +23,7 @@ export const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
 const argv = minimist(process.argv.slice(2), { string: ['_'] });
 interface ProjectSchema {
   appName?: string;
-  framework?: 'angular' | 'vue' | 'react' | string;
+  framework?: 'angular' | 'vue-vite' | 'react-vite' | string;
   template?: 'blank' | 'sidemenu' | 'tabs' | string;
   git?: boolean;
 }
@@ -54,11 +54,12 @@ async function main() {
     template: prompt.template,
     git: argv.git || true,
   };
+  
   if (
-    projectSchema.framework === 'react' ||
-    projectSchema.framework === 'vue'
+    prompt.framework === 'react' ||
+    prompt.framework === 'vue'
   ) {
-    projectSchema.framework = `${projectSchema.framework}-vite`;
+    projectSchema.framework = `${prompt.framework}-vite`;
   }
 
   if (existsSync(prompt.appName)) {
@@ -71,6 +72,7 @@ async function main() {
   mkdirSync(dest);
   await downloadAndExtract(url, dest);
   await cleanup();
+  await addIonicScripts();
 
   const shellOptions = {
     cwd: resolve(pwd, projectSchema.appName!),
@@ -177,6 +179,22 @@ async function handleExistingDirectory(path: string) {
 async function cleanup() {
   const manifestPath = resolve(projectSchema.appName!, 'ionic.starter.json');
   unlinkSync(manifestPath);
+}
+async function addIonicScripts(){
+  let scriptsToAdd: any = {
+    'ionic:build': 'npm run build',
+  };
+  if(projectSchema.framework === 'react-vite' || projectSchema.framework === 'vue-vite'){
+    scriptsToAdd['ionic:serve'] = 'npm run dev'
+  } else {
+    scriptsToAdd['ionic:serve'] = 'npm run start'
+  }
+  
+  const packagePath = resolve(projectSchema.appName!, 'package.json');
+  const projectPackage = JSON.parse(readFileSync(packagePath, 'utf-8'));
+
+  projectPackage.scripts = { ...projectPackage.scripts, ...scriptsToAdd };
+  writeFileSync(packagePath, JSON.stringify(projectPackage, null, 2));
 }
 
 async function addCapacitorToPackageJson() {
