@@ -7,20 +7,25 @@ import {
   group,
   confirm,
   isCancel,
+  spinner,
+  note,
 } from '@clack/prompts';
 import minimist from 'minimist';
 import fetch from 'node-fetch';
 import tar from 'tar';
 
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, } from 'node:fs';
-import { spawn } from 'node:child_process';
-import { pipeline } from 'node:stream/promises';
 import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { spawn, execFile } from 'node:child_process';
+
+import { pipeline } from 'node:stream/promises';
+import { rm, mkdir, unlink, writeFile, readFile } from 'node:fs/promises';
 
 const pwd = process.cwd();
-export const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
-
+const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
+const s = spinner();
 const argv = minimist(process.argv.slice(2), { string: ['_'] });
+
 interface ProjectSchema {
   appName?: string;
   framework?: 'angular' | 'vue-vite' | 'react-vite' | string;
@@ -54,11 +59,8 @@ async function main() {
     template: prompt.template,
     git: argv.git || true,
   };
-  
-  if (
-    prompt.framework === 'react' ||
-    prompt.framework === 'vue'
-  ) {
+
+  if (prompt.framework === 'react' || prompt.framework === 'vue') {
     projectSchema.framework = `${prompt.framework}-vite`;
   }
 
@@ -67,41 +69,45 @@ async function main() {
   }
 
   const url = `${STARTER_BASE_URL}/${projectSchema.framework}-official-${projectSchema.template}.tar.gz`;
+  const projectDir = resolve(pwd, prompt.appName);
 
-  const dest = resolve(pwd, prompt.appName);
-  mkdirSync(dest);
-  await downloadAndExtract(url, dest);
-  await cleanup();
+  await mkdir(projectDir);
+
+  try {
+    await downloadAndExtract(url, projectDir);
+  } catch (e: any) {
+    if (e.code === 'ENOTFOUND') {
+      console.error(
+        '[ERROR] Network connectivity error occurred, are you offline?'
+      );
+    }
+    return;
+  }
+
+  await removeStarterManifest();
   await addIonicScripts();
 
-  const shellOptions = {
-    cwd: resolve(pwd, projectSchema.appName!),
-    stdio: 'inherit',
-  };
+  if (prompt.shouldAddCap) {
+    await addCapacitorToPackageJson();
+  }
 
-  if (prompt.shouldAddCap) await addCapacitorToPackageJson();
-  if (prompt.shouldInstallDeps)
-    await runShell('npm', ['install'], shellOptions);
+  if (prompt.shouldInstallDeps) {
+    await installDeps();
+  }
 
   // Init Git Last
-  if (projectSchema.git) {
-    await runShell('git', ['init'], shellOptions);
-    await runShell('git', ['add', '-A'], shellOptions);
-    await runShell(
-      'git',
-      ['commit', '-m', 'Initial commit', '--no-gpg-sign'],
-      shellOptions
-    );
+  const gitStatus = projectSchema.git && (await isGitInstalled());
+  if (gitStatus) {
+    await setupGit();
   }
   onSuccess();
 }
 
-const downloadAndExtract = async (url: string, path: string) => {
-  const ws = tar.extract({ cwd: path });
+const downloadAndExtract = async (url: string, projectDir: string) => {
+  const ws = tar.extract({ cwd: projectDir });
   const response = await fetch(url);
   await pipeline(response.body!, ws);
 };
-
 async function getAppName() {
   const nameArg = argv._[0];
   return (
@@ -151,52 +157,38 @@ async function getTemplate() {
     }))
   );
 }
-function exitProcess(message = 'Operation cancelled.') {
-  cancel(message);
-  process.exit(0);
-}
-function onSuccess() {
-  outro(
-    `Project Created 🚀 
-
- Now you can run: 
-
- cd ${projectSchema.appName}
- npm run ionic:serve
-
- Happy Hacking 🤓`
-  );
-}
 async function handleExistingDirectory(path: string) {
   const shouldDelete = await confirm({
     message: `./${path} already exist, Overwrite?`,
   });
   if (isCancel(shouldDelete)) exitProcess();
   shouldDelete
-    ? rmSync(path, { recursive: true, force: true })
+    ? await deleteDir(path)
     : exitProcess(`Not erasing project in ${path}`);
 }
-async function cleanup() {
-  const manifestPath = resolve(projectSchema.appName!, 'ionic.starter.json');
-  unlinkSync(manifestPath);
+async function deleteDir(path: string) {
+  s.start('Removing Existing Project');
+  await rm(path, { recursive: true, force: true });
+  s.stop('Removed 👋');
 }
-async function addIonicScripts(){
+async function removeStarterManifest() {
+  const manifestPath = resolve(projectSchema.appName!, 'ionic.starter.json');
+  await unlink(manifestPath);
+}
+async function addIonicScripts() {
   let scriptsToAdd: any = {
     'ionic:build': 'npm run build',
   };
-  if(projectSchema.framework === 'react-vite' || projectSchema.framework === 'vue-vite'){
-    scriptsToAdd['ionic:serve'] = 'npm run dev'
-  } else {
-    scriptsToAdd['ionic:serve'] = 'npm run start'
-  }
-  
+  projectSchema.framework === 'angular'
+    ? (scriptsToAdd['ionic:serve'] = 'npm run start -- --open')
+    : (scriptsToAdd['ionic:serve'] = 'npm run dev -- --open');
+
   const packagePath = resolve(projectSchema.appName!, 'package.json');
-  const projectPackage = JSON.parse(readFileSync(packagePath, 'utf-8'));
+  const projectPackage = JSON.parse(await readFile(packagePath, 'utf-8'));
 
   projectPackage.scripts = { ...projectPackage.scripts, ...scriptsToAdd };
-  writeFileSync(packagePath, JSON.stringify(projectPackage, null, 2));
+  await writeFile(packagePath, JSON.stringify(projectPackage, null, 2));
 }
-
 async function addCapacitorToPackageJson() {
   const appDeps = {
     '@capacitor/app': 'latest',
@@ -207,16 +199,15 @@ async function addCapacitorToPackageJson() {
   };
   const devDeps = { '@capacitor/cli': 'latest' };
   const packagePath = resolve(projectSchema.appName!, 'package.json');
-  const projectPackage = JSON.parse(readFileSync(packagePath, 'utf-8'));
+  const projectPackage = JSON.parse(await readFile(packagePath, 'utf-8'));
   projectPackage.dependencies = { ...projectPackage.dependencies, ...appDeps };
   projectPackage.devDependencies = {
     ...projectPackage.devDependencies,
     ...devDeps,
   };
 
-  writeFileSync(packagePath, JSON.stringify(projectPackage, null, 2));
+  await writeFile(packagePath, JSON.stringify(projectPackage, null, 2));
 }
-
 async function runShell(
   cmd: string,
   arg1: string[],
@@ -229,5 +220,62 @@ async function runShell(
     });
   });
 }
+async function setupGit() {
+  const shellOptions = {
+    cwd: resolve(pwd, projectSchema.appName!),
+    stdio: 'inherit',
+  };
+  s.start('Setting up Git');
+  await runShell('git', ['init'], shellOptions);
+  await runShell('git', ['add', '-A'], shellOptions);
+  await runShell('git', ['commit', '-m', 'Initial commit', '--no-gpg-sign'], {
+    cwd: shellOptions.cwd,
+  });
+  s.stop('Git initialized');
+}
+async function installDeps() {
+  const pkgMgmt = await getPackageManager();
+  s.start('Install Dependencies');
+  await runShell(pkgMgmt, ['install'], { cwd: resolve(pwd, projectSchema.appName!), });
+  s.stop('Installed');
+}
+async function isGitInstalled(): Promise<boolean> {
+  return await new Promise<boolean>((res, rej) => {
+    execFile('git', ['--version'], (error) => {
+      if (error) {
+        rej(false);
+      } else {
+        res(true);
+      }
+    });
+  });
+}
+async function getPackageManager(): Promise<string>{
+  const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
+  const pkgManager = pkgInfo ? pkgInfo.name : 'npm'
+  return pkgManager;
+}
+function pkgFromUserAgent(userAgent: string | undefined) {
+  if (!userAgent) return undefined
+  const pkgSpec = userAgent.split(' ')[0]
+  const pkgSpecArr = pkgSpec.split('/')
+  return {
+    name: pkgSpecArr[0],
+    version: pkgSpecArr[1],
+  }
+}
 
-main().catch(console.error);
+function exitProcess(message = 'Operation cancelled.') {
+  cancel(message);
+  process.exit(0);
+}
+function onSuccess() {
+  note(
+    `Next Steps:\ncd ${projectSchema.appName}\nnpm run ionic:serve`,
+    'Project Created 🚀 '
+  );
+  outro('Happy Hacking 🤓');
+}
+main().catch((e) => {
+  console.error(e);
+});
