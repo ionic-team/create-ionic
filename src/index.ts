@@ -63,6 +63,9 @@ async function main() {
   if (prompt.framework === 'react' || prompt.framework === 'vue') {
     projectSchema.framework = `${prompt.framework}-vite`;
   }
+  if(prompt.framework === 'angular'){
+    await shouldUseStandAlone();
+  }
 
   if (existsSync(prompt.appName)) {
     await handleExistingDirectory(prompt.appName);
@@ -157,6 +160,16 @@ async function getTemplate() {
     }))
   );
 }
+
+async function shouldUseStandAlone(){
+  const useStandalone = await confirm({
+    message: `Do you want to use Standalone components?`,
+  });
+  if (isCancel(useStandalone)) exitProcess();
+  useStandalone
+    ? projectSchema.framework = `${projectSchema.framework}-standalone`
+    : null
+}
 async function handleExistingDirectory(path: string) {
   const shouldDelete = await confirm({
     message: `./${path} already exist, Overwrite?`,
@@ -179,7 +192,7 @@ async function addIonicScripts() {
   let scriptsToAdd: any = {
     'ionic:build': 'npm run build',
   };
-  projectSchema.framework === 'angular'
+  projectSchema.framework === 'angular' || projectSchema.framework === 'angular-standalone'
     ? (scriptsToAdd['ionic:serve'] = 'npm run start -- --open')
     : (scriptsToAdd['ionic:serve'] = 'npm run dev -- --open');
 
