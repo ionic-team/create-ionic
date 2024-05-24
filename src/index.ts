@@ -10,7 +10,7 @@ import {
   spinner,
   note,
 } from '@clack/prompts';
-import minimist from 'minimist';
+
 import fetch from 'node-fetch';
 import tar from 'tar';
 
@@ -21,10 +21,24 @@ import { spawn, execFile } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { rm, mkdir, unlink, writeFile, readFile } from 'node:fs/promises';
 
+import { parseArgs } from 'node:util';
+
 const pwd = process.cwd();
 const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
 const s = spinner();
-const argv = minimist(process.argv.slice(2), { string: ['_'] });
+
+const args = parseArgs({
+  options: {
+    type: {
+      type: 'string',
+    },
+    git: {
+      type: 'string',
+      default: 'true',
+    },
+  },
+  allowPositionals: true,
+});
 
 interface ProjectSchema {
   appName?: string;
@@ -57,13 +71,13 @@ async function main() {
     appName: prompt.appName,
     framework: prompt.framework,
     template: prompt.template,
-    git: argv.git || true,
+    git: args.values.git === 'true',
   };
 
   if (prompt.framework === 'react' || prompt.framework === 'vue') {
     projectSchema.framework = `${prompt.framework}-vite`;
   }
-  if(prompt.framework === 'angular'){
+  if (prompt.framework === 'angular') {
     await shouldUseStandAlone();
   }
 
@@ -112,7 +126,7 @@ const downloadAndExtract = async (url: string, projectDir: string) => {
   await pipeline(response.body!, ws);
 };
 async function getAppName() {
-  const nameArg = argv._[0];
+  const nameArg = args.positionals[0];
   return (
     nameArg ||
     (await text({
@@ -125,7 +139,7 @@ async function getAppName() {
   );
 }
 async function getFramework() {
-  const frameworkArg = argv.type;
+  const frameworkArg = args.values.type;
   return (
     frameworkArg ||
     (await select({
@@ -139,7 +153,7 @@ async function getFramework() {
   );
 }
 async function getTemplate() {
-  const templateArg = argv._[1];
+  const templateArg = args.positionals[1];
   return (
     templateArg ||
     (await select({
@@ -161,14 +175,14 @@ async function getTemplate() {
   );
 }
 
-async function shouldUseStandAlone(){
+async function shouldUseStandAlone() {
   const useStandalone = await confirm({
     message: `Do you want to use Standalone components?`,
   });
   if (isCancel(useStandalone)) exitProcess();
   useStandalone
-    ? projectSchema.framework = `${projectSchema.framework}-standalone`
-    : null
+    ? (projectSchema.framework = `${projectSchema.framework}-standalone`)
+    : null;
 }
 async function handleExistingDirectory(path: string) {
   const shouldDelete = await confirm({
@@ -192,7 +206,8 @@ async function addIonicScripts() {
   let scriptsToAdd: any = {
     'ionic:build': 'npm run build',
   };
-  projectSchema.framework === 'angular' || projectSchema.framework === 'angular-standalone'
+  projectSchema.framework === 'angular' ||
+  projectSchema.framework === 'angular-standalone'
     ? (scriptsToAdd['ionic:serve'] = 'npm run start -- --open')
     : (scriptsToAdd['ionic:serve'] = 'npm run dev -- --open');
 
@@ -249,7 +264,9 @@ async function setupGit() {
 async function installDeps() {
   const pkgMgmt = await getPackageManager();
   s.start('Install Dependencies');
-  await runShell(pkgMgmt, ['install'], { cwd: resolve(pwd, projectSchema.appName!), });
+  await runShell(pkgMgmt, ['install'], {
+    cwd: resolve(pwd, projectSchema.appName!),
+  });
   s.stop('Installed');
 }
 async function isGitInstalled(): Promise<boolean> {
@@ -263,19 +280,19 @@ async function isGitInstalled(): Promise<boolean> {
     });
   });
 }
-async function getPackageManager(): Promise<string>{
-  const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
-  const pkgManager = pkgInfo ? pkgInfo.name : 'npm'
+async function getPackageManager(): Promise<string> {
+  const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent);
+  const pkgManager = pkgInfo ? pkgInfo.name : 'npm';
   return pkgManager;
 }
 function pkgFromUserAgent(userAgent: string | undefined) {
-  if (!userAgent) return undefined
-  const pkgSpec = userAgent.split(' ')[0]
-  const pkgSpecArr = pkgSpec.split('/')
+  if (!userAgent) return undefined;
+  const pkgSpec = userAgent.split(' ')[0];
+  const pkgSpecArr = pkgSpec.split('/');
   return {
     name: pkgSpecArr[0],
     version: pkgSpecArr[1],
-  }
+  };
 }
 
 function exitProcess(message = 'Operation cancelled.') {
