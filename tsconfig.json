@@ -11,11 +11,6 @@
         "resolveJsonModule": true,
         "forceConsistentCasingInFileNames": true,
         "moduleResolution": "node",
-        "paths": {},
-        "plugins": [
-            {
-                "name": "typescript-eslint-language-service"
-            }
-        ]
+        "paths": {}
     }
 }

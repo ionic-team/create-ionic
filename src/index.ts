@@ -1,27 +1,27 @@
 import {
-  intro,
-  outro,
-  text,
   cancel,
-  select,
-  group,
   confirm,
+  group,
+  intro,
   isCancel,
-  spinner,
   note,
+  outro,
+  select,
+  spinner,
+  text,
 } from '@clack/prompts';
+
+import { SpawnOptions, execFile, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
+
+import { parseArgs } from 'node:util';
 
 import fetch from 'node-fetch';
 import tar from 'tar';
-
-import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import { spawn, execFile } from 'node:child_process';
-
-import { pipeline } from 'node:stream/promises';
-import { rm, mkdir, unlink, writeFile, readFile } from 'node:fs/promises';
-
-import { parseArgs } from 'node:util';
 
 const pwd = process.cwd();
 const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
@@ -49,7 +49,7 @@ interface ProjectSchema {
 let projectSchema: Partial<ProjectSchema> = {};
 
 async function main() {
-  intro(`Create Ionic App`);
+  intro('Create Ionic App');
   const prompt = await group(
     {
       appName: async () => await getAppName(),
@@ -92,12 +92,8 @@ async function main() {
 
   try {
     await downloadAndExtract(url, projectDir);
-  } catch (e: any) {
-    if (e.code === 'ENOTFOUND') {
-      console.error(
-        '[ERROR] Network connectivity error occurred, are you offline?'
-      );
-    }
+  } catch (e) {
+    console.error(`[ERROR]: Something happened`, e);
     return;
   }
 
@@ -121,10 +117,13 @@ async function main() {
 }
 
 const downloadAndExtract = async (url: string, projectDir: string) => {
-  const ws = tar.extract({ cwd: projectDir });
-  const response = await fetch(url);
-  await pipeline(response.body!, ws);
+  const unzip = tar.extract({ cwd: projectDir });
+  const input = await fetch(url);
+  if (input.body) {
+    await pipeline(input.body, unzip);
+  }
 };
+
 async function getAppName() {
   const nameArg = args.positionals[0];
   return (
@@ -133,7 +132,7 @@ async function getAppName() {
       message: 'What is the name of your project?',
       placeholder: 'my-app',
       validate(value) {
-        if (value.length === 0) return `Value is required!`;
+        if (value.length === 0) return 'Value is required!';
       },
     }))
   );
@@ -177,12 +176,12 @@ async function getTemplate() {
 
 async function shouldUseStandAlone() {
   const useStandalone = await confirm({
-    message: `Do you want to use Standalone components?`,
+    message: 'Do you want to use Standalone components?',
   });
   if (isCancel(useStandalone)) exitProcess();
-  useStandalone
-    ? (projectSchema.framework = `${projectSchema.framework}-standalone`)
-    : null;
+  if (useStandalone) {
+    projectSchema.framework = `${projectSchema.framework}-standalone`;
+  }
 }
 async function handleExistingDirectory(path: string) {
   const shouldDelete = await confirm({
@@ -199,19 +198,28 @@ async function deleteDir(path: string) {
   s.stop('Removed 👋');
 }
 async function removeStarterManifest() {
-  const manifestPath = resolve(projectSchema.appName!, 'ionic.starter.json');
+  const manifestPath = resolve(
+    projectSchema.appName as string,
+    'ionic.starter.json'
+  );
   await unlink(manifestPath);
 }
 async function addIonicScripts() {
-  let scriptsToAdd: any = {
+  const scriptsToAdd: { [key: string]: string } = {
     'ionic:build': 'npm run build',
   };
   projectSchema.framework === 'angular' ||
-  projectSchema.framework === 'angular-standalone'
-    ? (scriptsToAdd['ionic:serve'] = 'npm run start -- --open')
-    : (scriptsToAdd['ionic:serve'] = 'npm run dev -- --open');
+    projectSchema.framework === 'angular-standalone';
+  if (
+    projectSchema.framework === 'angular' ||
+    projectSchema.framework === 'angular-standalone'
+  ) {
+    scriptsToAdd['ionic:serve'] = 'npm run start -- --open';
+  } else {
+    scriptsToAdd['ionic:serve'] = 'npm run dev -- --open';
+  }
 
-  const packagePath = resolve(projectSchema.appName!, 'package.json');
+  const packagePath = resolve(projectSchema.appName as string, 'package.json');
   const projectPackage = JSON.parse(await readFile(packagePath, 'utf-8'));
 
   projectPackage.scripts = { ...projectPackage.scripts, ...scriptsToAdd };
@@ -226,7 +234,7 @@ async function addCapacitorToPackageJson() {
     '@capacitor/status-bar': 'latest',
   };
   const devDeps = { '@capacitor/cli': 'latest' };
-  const packagePath = resolve(projectSchema.appName!, 'package.json');
+  const packagePath = resolve(projectSchema.appName as string, 'package.json');
   const projectPackage = JSON.parse(await readFile(packagePath, 'utf-8'));
   projectPackage.dependencies = { ...projectPackage.dependencies, ...appDeps };
   projectPackage.devDependencies = {
@@ -239,7 +247,7 @@ async function addCapacitorToPackageJson() {
 async function runShell(
   cmd: string,
   arg1: string[],
-  shellOptions: any
+  shellOptions: SpawnOptions
 ): Promise<void> {
   await new Promise<void>((resolve) => {
     const cp = spawn(cmd, arg1, shellOptions);
@@ -250,8 +258,7 @@ async function runShell(
 }
 async function setupGit() {
   const shellOptions = {
-    cwd: resolve(pwd, projectSchema.appName!),
-    stdio: 'inherit',
+    cwd: resolve(pwd, projectSchema.appName as string),
   };
   s.start('Setting up Git');
   await runShell('git', ['init'], shellOptions);
@@ -265,7 +272,7 @@ async function installDeps() {
   const pkgMgmt = await getPackageManager();
   s.start('Install Dependencies');
   await runShell(pkgMgmt, ['install'], {
-    cwd: resolve(pwd, projectSchema.appName!),
+    cwd: resolve(pwd, projectSchema.appName as string),
   });
   s.stop('Installed');
 }
