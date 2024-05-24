@@ -27,25 +27,45 @@ const pwd = process.cwd();
 const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
 const s = spinner();
 
-const args = parseArgs({
-  options: {
-    type: {
-      type: 'string',
-    },
-    git: {
-      type: 'string',
-      default: 'true',
-    },
-  },
+const { values, tokens, positionals } = parseArgs({
   allowPositionals: true,
+  tokens: true,
+  options: {
+    type: { type: 'string' },
+    capacitor: { type: 'boolean', default: true },
+    deps: { type: 'boolean', default: true },
+    git: { type: 'boolean', default: true },
+    'no-capacitor': { type: 'boolean' },
+    'no-deps': { type: 'boolean' },
+    'no-git': { type: 'boolean' },
+  },
 });
+
+tokens
+  .filter((token) => token.kind === 'option')
+  .forEach((token) => {
+    if ('name' in token) {
+      if (token.name.startsWith('no-')) {
+        // Get the positive name but dropping the 'no-'
+        const positiveName = token.name.slice(3) as keyof typeof values;
+        if (positiveName !== 'type') {
+          values[positiveName] = false;
+          delete values[token.name];
+        }
+      } else {
+        if (token.name !== 'type') {
+          values[token.name] = token.value ?? true;
+        }
+      }
+    }
+  });
 
 interface ProjectSchema {
   appName?: string;
   framework?: 'angular' | 'vue-vite' | 'react-vite' | string;
   template?: 'blank' | 'sidemenu' | 'tabs' | string;
-  git?: boolean;
 }
+
 let projectSchema: Partial<ProjectSchema> = {};
 
 async function main() {
@@ -55,10 +75,6 @@ async function main() {
       appName: async () => await getAppName(),
       framework: async () => await getFramework(),
       template: async () => await getTemplate(),
-      shouldAddCap: async () =>
-        await confirm({ message: 'Add Capacitor to your project?' }),
-      shouldInstallDeps: async () =>
-        await confirm({ message: 'Install Deps?' }),
     },
     {
       onCancel: () => {
@@ -71,12 +87,12 @@ async function main() {
     appName: prompt.appName,
     framework: prompt.framework,
     template: prompt.template,
-    git: args.values.git === 'true',
   };
 
   if (prompt.framework === 'react' || prompt.framework === 'vue') {
     projectSchema.framework = `${prompt.framework}-vite`;
   }
+
   if (prompt.framework === 'angular') {
     await shouldUseStandAlone();
   }
@@ -93,23 +109,24 @@ async function main() {
   try {
     await downloadAndExtract(url, projectDir);
   } catch (e) {
-    console.error(`[ERROR]: Something happened`, e);
+    console.error('[ERROR]: Something happened', e);
     return;
   }
 
   await removeStarterManifest();
   await addIonicScripts();
 
-  if (prompt.shouldAddCap) {
+  if (values.capacitor) {
     await addCapacitorToPackageJson();
   }
 
-  if (prompt.shouldInstallDeps) {
+  if (values.deps) {
     await installDeps();
   }
 
   // Init Git Last
-  const gitStatus = projectSchema.git && (await isGitInstalled());
+  const gitStatus = values.git && (await isGitInstalled());
+
   if (gitStatus) {
     await setupGit();
   }
@@ -125,7 +142,7 @@ const downloadAndExtract = async (url: string, projectDir: string) => {
 };
 
 async function getAppName() {
-  const nameArg = args.positionals[0];
+  const nameArg = positionals[0];
   return (
     nameArg ||
     (await text({
@@ -137,8 +154,9 @@ async function getAppName() {
     }))
   );
 }
+
 async function getFramework() {
-  const frameworkArg = args.values.type;
+  const frameworkArg = values.type;
   return (
     frameworkArg ||
     (await select({
@@ -151,8 +169,9 @@ async function getFramework() {
     }))
   );
 }
+
 async function getTemplate() {
-  const templateArg = args.positionals[1];
+  const templateArg = positionals[1];
   return (
     templateArg ||
     (await select({
@@ -183,6 +202,7 @@ async function shouldUseStandAlone() {
     projectSchema.framework = `${projectSchema.framework}-standalone`;
   }
 }
+
 async function handleExistingDirectory(path: string) {
   const shouldDelete = await confirm({
     message: `./${path} already exist, Overwrite?`,
@@ -192,11 +212,13 @@ async function handleExistingDirectory(path: string) {
     ? await deleteDir(path)
     : exitProcess(`Not erasing project in ${path}`);
 }
+
 async function deleteDir(path: string) {
   s.start('Removing Existing Project');
   await rm(path, { recursive: true, force: true });
   s.stop('Removed 👋');
 }
+
 async function removeStarterManifest() {
   const manifestPath = resolve(
     projectSchema.appName as string,
@@ -204,6 +226,7 @@ async function removeStarterManifest() {
   );
   await unlink(manifestPath);
 }
+
 async function addIonicScripts() {
   const scriptsToAdd: { [key: string]: string } = {
     'ionic:build': 'npm run build',
@@ -225,6 +248,7 @@ async function addIonicScripts() {
   projectPackage.scripts = { ...projectPackage.scripts, ...scriptsToAdd };
   await writeFile(packagePath, JSON.stringify(projectPackage, null, 2));
 }
+
 async function addCapacitorToPackageJson() {
   const appDeps = {
     '@capacitor/app': 'latest',
@@ -244,6 +268,7 @@ async function addCapacitorToPackageJson() {
 
   await writeFile(packagePath, JSON.stringify(projectPackage, null, 2));
 }
+
 async function runShell(
   cmd: string,
   arg1: string[],
@@ -256,6 +281,7 @@ async function runShell(
     });
   });
 }
+
 async function setupGit() {
   const shellOptions = {
     cwd: resolve(pwd, projectSchema.appName as string),
@@ -268,6 +294,7 @@ async function setupGit() {
   });
   s.stop('Git initialized');
 }
+
 async function installDeps() {
   const pkgMgmt = await getPackageManager();
   s.start('Install Dependencies');
@@ -276,6 +303,7 @@ async function installDeps() {
   });
   s.stop('Installed');
 }
+
 async function isGitInstalled(): Promise<boolean> {
   return await new Promise<boolean>((res, rej) => {
     execFile('git', ['--version'], (error) => {
@@ -287,11 +315,13 @@ async function isGitInstalled(): Promise<boolean> {
     });
   });
 }
+
 async function getPackageManager(): Promise<string> {
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent);
   const pkgManager = pkgInfo ? pkgInfo.name : 'npm';
   return pkgManager;
 }
+
 function pkgFromUserAgent(userAgent: string | undefined) {
   if (!userAgent) return undefined;
   const pkgSpec = userAgent.split(' ')[0];
@@ -306,6 +336,7 @@ function exitProcess(message = 'Operation cancelled.') {
   cancel(message);
   process.exit(0);
 }
+
 function onSuccess() {
   note(
     `Next Steps:\ncd ${projectSchema.appName}\nnpm run ionic:serve`,
@@ -313,6 +344,7 @@ function onSuccess() {
   );
   outro('Happy Hacking 🤓');
 }
+
 main().catch((e) => {
   console.error(e);
 });

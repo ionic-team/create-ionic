@@ -101,7 +101,8 @@
             "noUselessTypeConstraint": "error",
             "noVoid": "error",
             "useLiteralKeys": "error",
-            "useOptionalChain": "error"
+            "useOptionalChain": "error",
+            "noForEach": "off"
           },
           "correctness": {
             "noPrecisionLoss": "error",
