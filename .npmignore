@@ -1,5 +1,6 @@
 # having this file excludes .gitignore entries
-
+.github
+biome.json
 src
 .prettierrc
 tsup.config.ts

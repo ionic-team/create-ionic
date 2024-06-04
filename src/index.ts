@@ -11,17 +11,19 @@ import {
   text,
 } from '@clack/prompts';
 
-import { SpawnOptions, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { mkdir, rm, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
-
-import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 
 import { parseArgs } from 'node:util';
 
 import fetch from 'node-fetch';
 import tar from 'tar';
+import { ProjectSchema } from './types';
+import { addCapacitorToPackageJson, initCapacitor } from './capacitor';
+import { isGitInstalled, setupGit } from './git';
+import { installDeps, modifyPackageJson } from './npm';
 
 const pwd = process.cwd();
 const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
@@ -60,12 +62,6 @@ tokens
     }
   });
 
-interface ProjectSchema {
-  appName?: string;
-  framework?: 'angular' | 'vue-vite' | 'react-vite' | string;
-  template?: 'blank' | 'sidemenu' | 'tabs' | string;
-}
-
 let projectSchema: Partial<ProjectSchema> = {};
 
 async function main() {
@@ -80,7 +76,7 @@ async function main() {
       onCancel: () => {
         exitProcess();
       },
-    }
+    },
   );
 
   projectSchema = {
@@ -114,22 +110,31 @@ async function main() {
   }
 
   await removeStarterManifest();
-  await addIonicScripts();
+  await modifyPackageJson(projectSchema);
 
   if (values.capacitor) {
-    await addCapacitorToPackageJson();
+    await addCapacitorToPackageJson(projectSchema);
   }
 
   if (values.deps) {
-    await installDeps();
+    s.start('Install Dependencies');
+    await installDeps(projectSchema);
+    s.stop('Installed');
+  }
+
+  if(values.capacitor){
+    s.start('Setting up Capacitor');
+    await initCapacitor(projectSchema);
+    s.stop('Capacitor initiated')
   }
 
   // Init Git Last
-  const gitStatus = values.git && (await isGitInstalled());
-
-  if (gitStatus) {
-    await setupGit();
+  if (values.git && (await isGitInstalled())) {
+    s.start('Setting up Git');
+    await setupGit(projectSchema);
+    s.stop('Git initialized');
   }
+
   onSuccess();
 }
 
@@ -162,9 +167,9 @@ async function getFramework() {
     (await select({
       message: 'Pick a project type.',
       options: [
-        { value: 'angular', label: 'Angular | angular.io' },
-        { value: 'react', label: 'React   | react.dev' },
-        { value: 'vue', label: 'Vue     | vuejs.org' },
+        { value: 'angular', label: 'Angular', hint: 'angular.dev' },
+        { value: 'react', label: 'React', hint: 'react.dev' },
+        { value: 'vue', label: 'Vue', hint: 'vuejs.org' },
       ],
     }))
   );
@@ -178,16 +183,25 @@ async function getTemplate() {
       message: 'Pick a starting template.',
       options: [
         {
-          value: 'tabs',
-          label:
-            'tabs         | A starting project with a simple tabbed interface',
+          value: 'blank',
+          label: 'blank',
+          hint: 'A blank canvas'
+        },
+        {
+          value: 'list',
+          label: 'list',
+          hint: 'A simple list'
         },
         {
           value: 'sidemenu',
-          label:
-            'sidemenu     | A starting project with a side menu with navigation in the content area',
+          label: 'sidemenu',
+          hint: 'Side menu with navigation in the content area'
         },
-        { value: 'blank', label: 'blank        | A blank starter project' },
+        {
+          value: 'tabs',
+          label: 'tabs',
+          hint: 'A simple tabbed interface'
+        },
       ],
     }))
   );
@@ -222,114 +236,9 @@ async function deleteDir(path: string) {
 async function removeStarterManifest() {
   const manifestPath = resolve(
     projectSchema.appName as string,
-    'ionic.starter.json'
+    'ionic.starter.json',
   );
   await unlink(manifestPath);
-}
-
-async function addIonicScripts() {
-  const scriptsToAdd: { [key: string]: string } = {
-    'ionic:build': 'npm run build',
-  };
-  projectSchema.framework === 'angular' ||
-    projectSchema.framework === 'angular-standalone';
-  if (
-    projectSchema.framework === 'angular' ||
-    projectSchema.framework === 'angular-standalone'
-  ) {
-    scriptsToAdd['ionic:serve'] = 'npm run start -- --open';
-  } else {
-    scriptsToAdd['ionic:serve'] = 'npm run dev -- --open';
-  }
-
-  const packagePath = resolve(projectSchema.appName as string, 'package.json');
-  const projectPackage = JSON.parse(await readFile(packagePath, 'utf-8'));
-
-  projectPackage.scripts = { ...projectPackage.scripts, ...scriptsToAdd };
-  await writeFile(packagePath, JSON.stringify(projectPackage, null, 2));
-}
-
-async function addCapacitorToPackageJson() {
-  const appDeps = {
-    '@capacitor/app': 'latest',
-    '@capacitor/core': 'latest',
-    '@capacitor/keyboard': 'latest',
-    '@capacitor/haptics': 'latest',
-    '@capacitor/status-bar': 'latest',
-  };
-  const devDeps = { '@capacitor/cli': 'latest' };
-  const packagePath = resolve(projectSchema.appName as string, 'package.json');
-  const projectPackage = JSON.parse(await readFile(packagePath, 'utf-8'));
-  projectPackage.dependencies = { ...projectPackage.dependencies, ...appDeps };
-  projectPackage.devDependencies = {
-    ...projectPackage.devDependencies,
-    ...devDeps,
-  };
-
-  await writeFile(packagePath, JSON.stringify(projectPackage, null, 2));
-}
-
-async function runShell(
-  cmd: string,
-  arg1: string[],
-  shellOptions: SpawnOptions
-): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const cp = spawn(cmd, arg1, shellOptions);
-    cp.on('close', () => {
-      resolve();
-    });
-  });
-}
-
-async function setupGit() {
-  const shellOptions = {
-    cwd: resolve(pwd, projectSchema.appName as string),
-  };
-  s.start('Setting up Git');
-  await runShell('git', ['init'], shellOptions);
-  await runShell('git', ['add', '-A'], shellOptions);
-  await runShell('git', ['commit', '-m', 'Initial commit', '--no-gpg-sign'], {
-    cwd: shellOptions.cwd,
-  });
-  s.stop('Git initialized');
-}
-
-async function installDeps() {
-  const pkgMgmt = await getPackageManager();
-  s.start('Install Dependencies');
-  await runShell(pkgMgmt, ['install'], {
-    cwd: resolve(pwd, projectSchema.appName as string),
-  });
-  s.stop('Installed');
-}
-
-async function isGitInstalled(): Promise<boolean> {
-  return await new Promise<boolean>((res, rej) => {
-    execFile('git', ['--version'], (error) => {
-      if (error) {
-        rej(false);
-      } else {
-        res(true);
-      }
-    });
-  });
-}
-
-async function getPackageManager(): Promise<string> {
-  const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent);
-  const pkgManager = pkgInfo ? pkgInfo.name : 'npm';
-  return pkgManager;
-}
-
-function pkgFromUserAgent(userAgent: string | undefined) {
-  if (!userAgent) return undefined;
-  const pkgSpec = userAgent.split(' ')[0];
-  const pkgSpecArr = pkgSpec.split('/');
-  return {
-    name: pkgSpecArr[0],
-    version: pkgSpecArr[1],
-  };
 }
 
 function exitProcess(message = 'Operation cancelled.') {
@@ -340,7 +249,7 @@ function exitProcess(message = 'Operation cancelled.') {
 function onSuccess() {
   note(
     `Next Steps:\ncd ${projectSchema.appName}\nnpm run ionic:serve`,
-    'Project Created 🚀 '
+    'Project Created 🚀 ',
   );
   outro('Happy Hacking 🤓');
 }
