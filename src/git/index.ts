@@ -6,11 +6,10 @@ export async function setupGit(projectSchema: ProjectSchema) {
   const shellOptions = {
     cwd: resolve(cwd(), projectSchema.appName as string),
   };
-  
-  const initRes =  await runShell('git', ['init'], shellOptions)
-  const addRes =  await runShell('git', ['add', '-A'], shellOptions)
-  const commmitRes =  await runShell( 'git', ['commit', '-m', 'Initial commit', '--no-gpg-sign'], shellOptions,)
-  console.log(initRes, addRes, commmitRes)
+
+  await runShell('git', ['init'], shellOptions);
+  await runShell('git', ['add', '-A'], shellOptions);
+  await runShell( 'git', ['commit', '-m', 'Initial commit', '--no-gpg-sign'], shellOptions);
 }
 
 export async function isGitInstalled(): Promise<boolean> {
@@ -20,9 +19,4 @@ export async function isGitInstalled(): Promise<boolean> {
   } catch (_e) {
     return false;
   }
-
-  // if(status === 0){
-  //   return true;
-  // }
-  // return false;
 }

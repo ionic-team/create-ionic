@@ -10,13 +10,11 @@ export function runShell(
     const cp = spawn(cmd, arg1, {
       ...shellOptions,
       stdio: 'ignore',
-      // shell: true
     });
     cp.on('error', (err) => {
-      console.log(err)
-      rej(err)
+      console.log(err);
+      rej(err);
     });
     cp.on('close', (code) => res(code));
   });
 }
-
