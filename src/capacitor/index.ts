@@ -36,7 +36,7 @@ export async function initCapacitor(
   cmdPrefix = platform() === 'win32' ? `${cmdPrefix}.cmd` : cmdPrefix;
 
   const name = projectSchema.appName as string;
-  const packageId = 'io.ionic.starter';
+  const packageId = projectSchema.packageId as string;
   const webDir = getDefaultDist(projectSchema.framework as string);
 
   const args = ['cap', 'init', name, packageId, '--web-dir', webDir]

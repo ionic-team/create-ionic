@@ -2,6 +2,7 @@ export interface ProjectSchema {
   appName?: string;
   framework?: 'angular' | 'vue-vite' | 'react-vite' | string;
   template?: 'blank' | 'sidemenu' | 'tabs' | 'list' | string;
+  packageId?: string;
 }
 
 export interface SpinnerType {

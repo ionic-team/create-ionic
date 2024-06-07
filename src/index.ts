@@ -24,16 +24,19 @@ import { ProjectSchema } from './types';
 import { addCapacitorToPackageJson, initCapacitor } from './capacitor';
 import { isGitInstalled, setupGit } from './git';
 import { installDeps, modifyPackageJson } from './npm';
+import { argv } from 'node:process';
 
 const pwd = process.cwd();
 const STARTER_BASE_URL = 'https://d2ql0qc7j8u4b2.cloudfront.net';
 const s = spinner();
 
 const { values, tokens, positionals } = parseArgs({
+  args: argv.slice(2),
   allowPositionals: true,
   tokens: true,
   options: {
     type: { type: 'string' },
+    'package-id': { type: 'string', default: 'io.ionic.starter' },
     capacitor: { type: 'boolean', default: true },
     deps: { type: 'boolean', default: true },
     git: { type: 'boolean', default: true },
@@ -50,19 +53,19 @@ tokens
       if (token.name.startsWith('no-')) {
         // Get the positive name but dropping the 'no-'
         const positiveName = token.name.slice(3) as keyof typeof values;
-        if (positiveName !== 'type') {
+        if (positiveName !== 'type' && positiveName !== 'package-id') {
           values[positiveName] = false;
           delete values[token.name];
         }
       } else {
-        if (token.name !== 'type') {
+        if (token.name !== 'type' && token.name !== 'package-id') {
           values[token.name] = token.value ?? true;
         }
       }
     }
   });
 
-let projectSchema: Partial<ProjectSchema> = {};
+let projectSchema: ProjectSchema = {};
 
 async function main() {
   intro('Create Ionic App');
@@ -83,6 +86,7 @@ async function main() {
     appName: prompt.appName,
     framework: prompt.framework,
     template: prompt.template,
+    packageId: values['package-id']
   };
 
   if (prompt.framework === 'react' || prompt.framework === 'vue') {
