@@ -1,19 +1,28 @@
-import { exec, runShell } from '../shell';
+import { runShell } from '../shell';
 import { ProjectSchema } from '../types';
 import { resolve } from 'node:path';
+import { cwd } from 'node:process';
 export async function setupGit(projectSchema: ProjectSchema) {
   const shellOptions = {
-    cwd: resolve(process.cwd(), projectSchema.appName as string),
+    cwd: resolve(cwd(), projectSchema.appName as string),
   };
-  await runShell('git', ['init'], shellOptions);
-  await runShell('git', ['add', '-A'], shellOptions);
-  await runShell('git', ['commit', '-m', 'Initial commit', '--no-gpg-sign'], shellOptions);
+  
+  const initRes =  await runShell('git', ['init'], shellOptions)
+  const addRes =  await runShell('git', ['add', '-A'], shellOptions)
+  const commmitRes =  await runShell( 'git', ['commit', '-m', 'Initial commit', '--no-gpg-sign'], shellOptions,)
+  console.log(initRes, addRes, commmitRes)
 }
 
 export async function isGitInstalled(): Promise<boolean> {
-  const res = await exec('git', ['--version']);
-  if (res) {
+  try {
+    await runShell('git', ['--version'], {});
     return true;
+  } catch (_e) {
+    return false;
   }
-  return false;
+
+  // if(status === 0){
+  //   return true;
+  // }
+  // return false;
 }

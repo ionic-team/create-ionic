@@ -1,5 +1,4 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { platform } from 'node:os';
 import { resolve } from 'node:path';
 import { runShell } from '../shell';
 import { ProjectSchema } from '../types';
@@ -22,10 +21,9 @@ export function pkgFromUserAgent(userAgent: string | undefined) {
 
 export async function installDeps(projectSchema: ProjectSchema) {
   const pkgMgmt = getPackageManager();
-  const cmdPrefix = platform() === 'win32' ? `${pkgMgmt}.cmd` : pkgMgmt;
-
-  await runShell(cmdPrefix, ['install'], {
+  await runShell(pkgMgmt, ['install'], {
     cwd: resolve(process.cwd(), projectSchema.appName as string),
+    stdio: 'pipe'
   });
 }
 

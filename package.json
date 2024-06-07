@@ -1,6 +1,6 @@
 {
   "name": "create-ionic",
-  "version": "0.0.9",
+  "version": "0.0.11",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
+    "@types/cross-spawn": "^6.0.6",
+    "cross-spawn": "^7.0.3",
     "node-fetch": "^3.3.2",
     "tar": "^6.2.1"
   },
