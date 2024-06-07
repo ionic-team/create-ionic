@@ -1,4 +1,4 @@
-import { runShell } from '../shell';
+import { checkCmd, runShell } from '../shell';
 import { ProjectSchema } from '../types';
 import { resolve } from 'node:path';
 import { cwd } from 'node:process';
@@ -13,10 +13,5 @@ export async function setupGit(projectSchema: ProjectSchema) {
 }
 
 export async function isGitInstalled(): Promise<boolean> {
-  try {
-    await runShell('git', ['--version'], {});
-    return true;
-  } catch (_e) {
-    return false;
-  }
+  return await checkCmd('git', ['--version'], {});
 }

@@ -7,14 +7,16 @@ export function runShell(
   shellOptions: SpawnOptions,
 ) {
   return new Promise((res, rej) => {
-    const cp = spawn(cmd, arg1, {
-      ...shellOptions,
-      stdio: 'ignore',
-    });
-    cp.on('error', (err) => {
-      console.log(err);
-      rej(err);
-    });
+    const cp = spawn(cmd, arg1, { ...shellOptions });
+    cp.on('error', (err) => rej(err));
     cp.on('close', (code) => res(code));
+  });
+}
+
+export function checkCmd( cmd: string, arg1: string[], shellOptions: SpawnOptions,) {
+  return new Promise<boolean>((res) => {
+    const cp = spawn(cmd, arg1, { ...shellOptions});
+    cp.on('error', () => res(false));
+    cp.on('close', () => res(true));
   });
 }
